@@ -1,78 +1,95 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-import yaml
+from fastapi import FastAPI, HTTPException, APIRouter, status, Query
+from pydantic import BaseModel
 from typing import Optional, List
 
-# Tạo ứng dụng FastAPI
-app = FastAPI(title="Book Management API", version="1.0.0")
 
-# Đọc file OpenAPI YAML
-with open("book_api.yaml", "r", encoding="utf-8") as f:
-    spec = yaml.safe_load(f)
+class BookBase(BaseModel):
+    title: str
+    author: str
 
-@app.get("/openapi.yaml")
-def get_spec():
-    """Trả về nội dung OpenAPI YAML dưới dạng JSON"""
-    return JSONResponse(content=spec)
+class BookCreate(BookBase):
+    pass
 
-books = [
-        {"id": 1, "title": "Vo chong A Phu", "author": "To Hoai"},
-        {"id": 2, "title": "Chiec thuyen ngoai xa", "author": "Nguyen Minh Chau"},
-        {"id": 3, "title": "Vo nhat", "author": "Kim Lan"},
-        {"id": 4, "title": "Chi Pheo", "author": "Nam Cao"},
-    ]
+class Book(BookBase):
+    id: int
+    class Config:
+        orm_mode = True
 
-@app.get("/books")
-def get_books():
-    return books
+router_v1 = APIRouter(prefix="/v1")
+
+books_db = [
+    {"id": 1, "title": "Vợ chồng A Phủ", "author": "Tô Hoài"},
+    {"id": 2, "title": "Chiếc thuyền ngoài xa", "author": "Nguyễn Minh Châu"},
+    {"id": 3, "title": "Vợ nhặt", "author": "Kim Lân"},
+    {"id": 4, "title": "Chí Phèo", "author": "Nam Cao"},
+    {"id": 5, "title": "Việt Bắc", "author": "Tố Hữu"},
+    {"id": 6, "title": "Nguoi lái đò sông Đà", "author": "Nguyẽn Tuân"},
+]
 
 
-@app.get("/books/search")
-def search_books(q: Optional[str] = None, skip: int = 0, limit: int = 2):
-    """
-    Tìm kiếm sách theo từ khóa (q) trong tiêu đề hoặc tác giả.
-    Có hỗ trợ phân trang bằng skip (bỏ qua N sách đầu) và limit (số sách trả về).
-    """
-    filtered_books = books
+@router_v1.get("/books", response_model=List[Book])
+def get_books(
+    q: Optional[str] = Query(None, description="Tìm kiếm theo tiêu đề hoặc tác giả"),
+    skip: int = 0,
+    limit: int = 10
+):
+    filtered_books = books_db
     if q:
         q_lower = q.lower()
         filtered_books = [
-            b for b in books if q_lower in b["title"].lower() or q_lower in b["author"].lower()
+            b for b in books_db if q_lower in b["title"].lower() or q_lower in b["author"].lower()
         ]
     return filtered_books[skip: skip + limit]
 
 
-@app.get("/books/{id}")
+@router_v1.get("/books/{id}", response_model=Book)
 def get_book(id: int):
-    for book in books:
+    for book in books_db:
         if book["id"] == id:
             return book
-    raise HTTPException(status_code=404, detail="Khong tim thay sach")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sách")
 
 
-@app.post("/books")
-def add_book(book: dict):
-    book["id"] = max([b["id"] for b in books]) + 1 if books else 1
-    books.append(book)
-    return {"message": "Sach duoc them thanh cong", "book": book}
+@router_v1.post("/books", response_model=Book, status_code=status.HTTP_201_CREATED)
+def add_book(book_in: BookCreate):
+    new_book_data = book_in.dict()
+    new_book_data["id"] = max([b["id"] for b in books_db]) + 1 if books_db else 1
+    
+    books_db.append(new_book_data)
+    return new_book_data
 
 
-@app.put("/books/{id}")
-def update_book(id: int, new_data: dict):
-    for book in books:
+@router_v1.put("/books/{id}", response_model=Book)
+def update_book(id: int, book_in: BookCreate):
+    for index, book in enumerate(books_db):
         if book["id"] == id:
-            book.update(new_data)
-            return {"message": "Sach da duoc cap nhat", "book": book}
-    raise HTTPException(status_code=404, detail="Khong tim thay sach")
+            updated_book_data = book_in.dict()
+            updated_book_data["id"] = id
+            books_db[index] = updated_book_data
+            return updated_book_data
+            
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sách")
 
 
-@app.delete("/books/{id}")
+@router_v1.delete("/books/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_book(id: int):
-    for book in books:
+    book_to_delete = None
+    for book in books_db:
         if book["id"] == id:
-            books.remove(book)
-            return {"message": "Sach duoc xoa thanh cong"}
-    raise HTTPException(status_code=404, detail="Khong tim thay sach")
+            book_to_delete = book
+            break
+    
+    if book_to_delete:
+        books_db.remove(book_to_delete)
+        return # Trả về response 204 (No Content)
+        
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sách")
 
 
+app = FastAPI(title="Book Management API")
 
+app.include_router(router_v1)
+
+@app.get("/")
+def read_root():
+    return {"message": "Chào mừng đến với Book API. Thử truy cập /v1/books hoặc /docs"}

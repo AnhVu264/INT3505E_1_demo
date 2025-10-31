@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 1
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -30,6 +31,7 @@ fake_users_db = {
 class Token(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: str
 
 class TokenData(BaseModel):
     username: Optional[str] = None
@@ -172,8 +174,52 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=400, detail="Sai tài khoản hoặc mật khẩu")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_access_token(data={"sub": user.username}, expires_delta=refresh_token_expires)
+
+    return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+@app.post("/token/refresh", response_model=Token)
+async def refresh_access_token(token_data: RefreshTokenRequest):
+    refresh_token = token_data.refresh_token
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Refresh token không hợp lệ hoặc đã hết hạn",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = get_user(fake_users_db, username=username)
+    if user is None:
+        raise credentials_exception
+    
+    new_access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    new_access_token = create_access_token(data={"sub": user.username}, expires_delta=new_access_token_expires)
+    
+    new_refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    new_refresh_token = create_access_token(data={"sub": user.username}, expires_delta=new_refresh_token_expires)
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "refresh_token": new_refresh_token
+    }
 
 @app.get("/")
 def read_root():
     return {"message": "Book API có JWT (HTTPBearer) — Truy cập /docs để lấy token và nhập thủ công vào Authorize"}
+
+
+

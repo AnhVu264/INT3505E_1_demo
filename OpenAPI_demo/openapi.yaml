@@ -1,0 +1,175 @@
+openapi: 3.0.2
+info:
+  title: Book Management API with JWT (HTTPBearer)
+  version: 1.0.0
+  description: |
+    API quản lý sách có xác thực bằng **JWT (HTTPBearer)**.
+    - Người dùng có thể xem danh sách sách.
+    - Admin có thể thêm, sửa, xóa sách.
+    - Dùng `/token` để đăng nhập và lấy token JWT.
+servers:
+  - url: http://127.0.0.1:8000
+paths:
+  /token:
+    post:
+      summary: Đăng nhập lấy JWT token
+      tags: [Auth]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: admin123
+      responses:
+        '200':
+          description: Token hợp lệ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+  /v1/books:
+    get:
+      summary: Lấy danh sách sách
+      security:
+        - bearerAuth: []
+      tags: [Books]
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Tìm kiếm theo tiêu đề hoặc tác giả
+        - in: query
+          name: skip
+          schema:
+            type: integer
+            default: 0
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Danh sách sách
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+    post:
+      summary: Thêm sách mới (chỉ Admin)
+      security:
+        - bearerAuth: []
+      tags: [Books]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookCreate'
+      responses:
+        '201':
+          description: Sách được thêm thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+  /v1/books/{id}:
+    get:
+      summary: Lấy chi tiết sách
+      security:
+        - bearerAuth: []
+      tags: [Books]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Chi tiết sách
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Không tìm thấy sách
+    put:
+      summary: Cập nhật sách (chỉ Admin)
+      security:
+        - bearerAuth: []
+      tags: [Books]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookCreate'
+      responses:
+        '200':
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    delete:
+      summary: Xóa sách (chỉ Admin)
+      security:
+        - bearerAuth: []
+      tags: [Books]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Đã xóa thành công
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    BookBase:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Vợ chồng A Phủ
+        author:
+          type: string
+          example: Tô Hoài
+    BookCreate:
+      allOf:
+        - $ref: '#/components/schemas/BookBase'
+    Book:
+      allOf:
+        - $ref: '#/components/schemas/BookBase'
+        - type: object
+          properties:
+            id:
+              type: integer
+              example: 1

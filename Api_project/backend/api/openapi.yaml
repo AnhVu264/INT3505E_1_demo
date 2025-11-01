@@ -1,0 +1,156 @@
+openapi: 3.0.0
+info:
+  title: Product API
+  version: 1.0.0
+servers:
+- url: /
+paths:
+  /products:
+    get:
+      operationId: getProducts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/Product"
+                type: array
+          description: Danh sách sản phẩm
+      summary: Lấy danh sách sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    post:
+      operationId: createProduct
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Sản phẩm đã được tạo
+      summary: Tạo sản phẩm mới
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+  /products/{id}:
+    delete:
+      operationId: deleteProduct
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: Xóa thành công (Không có nội dung trả về)
+        "404":
+          description: Không tìm thấy sản phẩm
+      summary: Xóa sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    get:
+      operationId: getProductById
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Chi tiết sản phẩm
+        "404":
+          description: Không tìm thấy sản phẩm
+      summary: Lấy 1 sản phẩm theo ID
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    put:
+      operationId: updateProduct
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Sản phẩm đã được cập nhật
+        "404":
+          description: Không tìm thấy sản phẩm
+      summary: Cập nhật sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+components:
+  schemas:
+    ProductInput:
+      example:
+        price: 1500
+        name: Laptop XYZ
+        description: Laptop cấu hình mạnh
+      properties:
+        name:
+          example: Laptop XYZ
+          type: string
+        price:
+          example: 1500
+          type: number
+        description:
+          example: Laptop cấu hình mạnh
+          type: string
+      required:
+      - name
+      - price
+      type: object
+    Product:
+      allOf:
+      - $ref: "#/components/schemas/ProductInput"
+      - properties:
+          _id:
+            example: 60c72b2f9b1d8e001c8a4567
+            type: string
+          createdAt:
+            format: date-time
+            type: string
+          updatedAt:
+            format: date-time
+            type: string
+        type: object
+      example:
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        price: 1500
+        name: Laptop XYZ
+        description: Laptop cấu hình mạnh
+        _id: 60c72b2f9b1d8e001c8a4567
+        updatedAt: 2000-01-23T04:56:07.000+00:00

@@ -1,33 +1,65 @@
-/**
- * The ProductController file is a very simple one, which does not need to be changed manually,
- * unless there's a case where business logic routes the request to an entity which is not
- * the service.
- * The heavy lifting of the Controller item is done in Request.js - that is where request
- * parameters are extracted and sent to the service, and where response is handled.
- */
-
-const Controller = require('./Controller');
 const service = require('../services/ProductService');
+
+// Hàm trợ giúp để gửi phản hồi
+const handleResponse = (response, { payload, status }) => {
+  response.status(status).json(payload);
+};
+
+// Hàm trợ giúp để bắt lỗi
+const handleError = (response, error) => {
+  console.error(error); // In lỗi ra terminal
+  response.status(500).json({ message: error.message || 'Lỗi server nội bộ' });
+};
+
 const createProduct = async (request, response) => {
-  await Controller.handleRequest(request, response, service.createProduct);
+  try {
+    // Tự tay lấy request.body và truyền vào service
+    const result = await service.createProduct(request.body);
+    handleResponse(response, result);
+  } catch (error) {
+    handleError(response, error);
+  }
 };
 
 const deleteProduct = async (request, response) => {
-  await Controller.handleRequest(request, response, service.deleteProduct);
+  try {
+    // Tự tay lấy request.params.id và truyền vào service
+    const result = await service.deleteProduct(request.params.id);
+    handleResponse(response, result);
+  } catch (error) {
+    handleError(response, error);
+  }
 };
 
 const getProductById = async (request, response) => {
-  await Controller.handleRequest(request, response, service.getProductById);
+  try {
+    // Tự tay lấy request.params.id
+    const result = await service.getProductById(request.params.id);
+    handleResponse(response, result);
+  } catch (error) {
+    handleError(response, error);
+  }
 };
 
 const getProducts = async (request, response) => {
-  await Controller.handleRequest(request, response, service.getProducts);
+  try {
+    // Hàm này không cần tham số
+    const result = await service.getProducts();
+    handleResponse(response, result);
+  } catch (error) {
+    handleError(response, error);
+  }
 };
 
 const updateProduct = async (request, response) => {
-  await Controller.handleRequest(request, response, service.updateProduct);
+  try {
+    // Tự tay lấy cả body và id
+    const result = await service.updateProduct(request.body, request.params.id);
+    handleResponse(response, result);
+  } catch (error) {
+    handleError(response, error);
+  }
 };
-
 
 module.exports = {
   createProduct,

@@ -1,0 +1,8 @@
+# Thư mục chứa thư viện
+/node_modules
+
+# File môi trường (chứa mật khẩu, API keys)
+.env
+
+# File log
+*.log

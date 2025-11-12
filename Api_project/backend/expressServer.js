@@ -11,6 +11,7 @@ const bodyParser = require('body-parser');
 const OpenApiValidator = require('express-openapi-validator');
 const logger = require('./logger');
 const config = require('./config');
+const authRoutes = require('./routes/AuthRoutes');
 
 class ExpressServer {
   constructor(port, openApiYaml) {
@@ -46,6 +47,7 @@ class ExpressServer {
       res.status(200);
       res.json(req.query);
     });
+    this.app.use('/auth', authRoutes);
     this.app.use(
       OpenApiValidator.middleware({
         apiSpec: this.openApiPath,

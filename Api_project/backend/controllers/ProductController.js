@@ -1,3 +1,4 @@
+const { protect } = require('../middleware/AuthMiddleware');
 const service = require('../services/ProductService');
 
 // Hàm trợ giúp để gửi phản hồi
@@ -62,9 +63,18 @@ const updateProduct = async (request, response) => {
 };
 
 module.exports = {
-  createProduct,
-  deleteProduct,
   getProductById,
   getProducts,
-  updateProduct,
+  
+  createProduct: (request, response) => {
+    protect(request, response, () => createProduct(request, response));
+  },
+
+  updateProduct: (request, response) => {
+    protect(request, response, () => updateProduct(request, response));
+  },
+
+  deleteProduct: (request, response) => {
+    protect(request, response, () => deleteProduct(request, response));
+  },
 };

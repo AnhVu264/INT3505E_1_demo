@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -98,6 +98,25 @@ class Book(BookBase):
     class Config:
         orm_mode = True
 
+# VERSION 2
+class PaymentIntentRequest(BaseModel):
+    book_id: int
+    quantity: int
+
+class PaymentIntentResponse(BaseModel):
+    intent_id: str
+    client_secret: str # Gửi cái này về client (app/web)
+    amount: float
+    currency: str = "VND"
+
+class PaymentConfirmRequest(BaseModel):
+    payment_method_id: str # Token an toàn, ví dụ "pm_abc123"
+
+class PaymentConfirmResponse(BaseModel):
+    success: bool
+    charge_id: str
+    message: str
+
 router_v1 = APIRouter(prefix="/v1")
 
 books_db = [
@@ -162,10 +181,65 @@ def delete_book(id: int, current_user: User = Depends(get_current_user)):
             return
     raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
+router_v2 = APIRouter(prefix="/v2/checkout")
+# Giả lập 1 DB để lưu các "ý định thanh toán"
+payment_intents_db = {}
+
+@router_v2.post("/intents", response_model=PaymentIntentResponse, summary="[V2 - Bước 1] Tạo ý định thanh toán")
+def create_payment_intent(
+    request: PaymentIntentRequest,
+    current_user: User = Depends(get_current_user)
+):
+    book = next((b for b in books_db if b["id"] == request.book_id), None)
+    if not book:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sách")
+
+    # Giả lập giá sách = 100.000 VND
+    amount = 100000 * request.quantity
+
+    intent_id = f"pi_{current_user.username}_{datetime.now().timestamp()}"
+    client_secret = f"{intent_id}_secret_key" # Key bí mật để client xác nhận
+
+    # Lưu lại ý định thanh toán
+    payment_intents_db[intent_id] = {
+        "amount": amount,
+        "book_title": book["title"],
+        "status": "requires_payment_method"
+    }
+
+    return PaymentIntentResponse(
+        intent_id=intent_id,
+        client_secret=client_secret,
+        amount=amount
+    )
+
+@router_v2.post("/intents/{intent_id}/confirm", response_model=PaymentConfirmResponse, summary="[V2 - Bước 2] Xác nhận thanh toán")
+def confirm_payment(
+    intent_id: str,
+    request: PaymentConfirmRequest,
+    current_user: User = Depends(get_current_user)
+):
+    if intent_id not in payment_intents_db:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ý định thanh toán")
+
+    intent = payment_intents_db[intent_id]
+
+    # Giả lập gọi đến cổng thanh toán (Stripe, MoMo...) với token an toàn
+    print(f"Đang xử lý thanh toán an toàn cho {request.payment_method_id}...")
+
+    intent["status"] = "succeeded"
+    charge_id = f"ch_v2_{intent_id}"
+
+    return PaymentConfirmResponse(
+        success=True,
+        charge_id=charge_id,
+        message=f"Cảm ơn {current_user.username} đã mua sách '{intent['book_title']}' thành công."
+    )
 
 app = FastAPI(title="Book Management API with JWT (HTTPBearer)")
 
 app.include_router(router_v1)
+app.include_router(router_v2) 
 
 @app.post("/token", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -220,6 +294,5 @@ async def refresh_access_token(token_data: RefreshTokenRequest):
 @app.get("/")
 def read_root():
     return {"message": "Book API có JWT (HTTPBearer) — Truy cập /docs để lấy token và nhập thủ công vào Authorize"}
-
 
 

@@ -1,12 +1,20 @@
-from fastapi import FastAPI, HTTPException, APIRouter, status, Query, Depends
+from fastapi import FastAPI, HTTPException, APIRouter, status, Query, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional, List
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from loguru import logger
+from prometheus_fastapi_instrumentator import Instrumentator
+import sys
+import os
+from dotenv import load_dotenv
 
-SECRET_KEY = "supersecretkey"
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key_neu_quen_cau_hinh")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
@@ -14,6 +22,14 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 security = HTTPBearer()
+
+# Cấu hình Logger (Ghi ra file và Console)
+logger.remove() # Xóa logger mặc định
+logger.add(sys.stderr, level="INFO") # Hiện ra màn hình
+logger.add("app_logs.json", format="{time} {level} {message}", level="INFO", rotation="10 MB", serialize=True) # Lưu file JSON
+
+# Cấu hình Rate Limiter (Chặn spam theo IP)
+limiter = Limiter(key_func=get_remote_address)
 
 fake_users_db = {
     "admin": {

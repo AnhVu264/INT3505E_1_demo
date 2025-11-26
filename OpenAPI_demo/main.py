@@ -254,19 +254,33 @@ def confirm_payment(
 
 app = FastAPI(title="Book Management API with JWT (HTTPBearer)")
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Tự động đo đạc metrics cho toàn bộ API
+Instrumentator().instrument(app).expose(app)
+
 app.include_router(router_v1)
 app.include_router(router_v2) 
 
 @app.post("/token", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute") # Tối đa 5 request/phút
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()): 
+    # 1. Ghi log: Ai đang cố đăng nhập?
+    logger.info(f"Login attempt | IP: {request.client.host} | Username: {form_data.username}")
     user = authenticate_user(fake_users_db, form_data.username, form_data.password)
     if not user:
+        # 2. Ghi log cảnh báo: Đăng nhập thất bại
+        logger.warning(f"Login failed | IP: {request.client.host} | Username: {form_data.username}")
         raise HTTPException(status_code=400, detail="Sai tài khoản hoặc mật khẩu")
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
 
     refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = create_access_token(data={"sub": user.username}, expires_delta=refresh_token_expires)
+
+    # 3. Ghi log thành công: Đăng nhập OK
+    logger.success(f"Login successful | User: {user.username}")
 
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}
 

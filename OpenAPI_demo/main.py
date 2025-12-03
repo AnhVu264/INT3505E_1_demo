@@ -111,6 +111,7 @@ class BookCreate(BookBase):
 
 class Book(BookBase):
     id: int
+    links: List[Link] = []
     class Config:
         orm_mode = True
 
@@ -163,7 +164,22 @@ def get_books(
 def get_book(id: int, current_user: User = Depends(get_current_user)):
     for book in books_db:
         if book["id"] == id:
-            return book
+            # Tạo base URL động (ví dụ: http://localhost:8000/v1/books/1)
+            base_url = str(request.base_url).rstrip("/")
+            
+            links = [
+                {"rel": "self", "href": f"{base_url}/v1/books/{id}", "method": "GET"},
+            ]
+            
+            # Nếu là admin thì gợi ý thêm link sửa/xóa
+            if current_user.role == "admin":
+                links.append({"rel": "update", "href": f"{base_url}/v1/books/{id}", "method": "PUT"})
+                links.append({"rel": "delete", "href": f"{base_url}/v1/books/{id}", "method": "DELETE"})
+            
+            # Copy data để không ảnh hưởng DB gốc
+            response_book = book.copy()
+            response_book["links"] = links
+            return response_book
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sách")
 
 @router_v1.post("/books", response_model=Book, status_code=status.HTTP_201_CREATED)
@@ -198,7 +214,7 @@ def delete_book(id: int, current_user: User = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
 router_v2 = APIRouter(prefix="/v2/checkout")
-# Giả lập 1 DB để lưu các "ý định thanh toán"
+
 payment_intents_db = {}
 
 @router_v2.post("/intents", response_model=PaymentIntentResponse, summary="[V2 - Bước 1] Tạo ý định thanh toán")
@@ -210,7 +226,7 @@ def create_payment_intent(
     if not book:
         raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
-    # Giả lập giá sách = 100.000 VND
+
     amount = 100000 * request.quantity
 
     intent_id = f"pi_{current_user.username}_{datetime.now().timestamp()}"
@@ -236,21 +252,31 @@ def confirm_payment(
     current_user: User = Depends(get_current_user)
 ):
     if intent_id not in payment_intents_db:
+        
+        logger.error(f"Payment failed: Intent ID {intent_id} not found for user {current_user.username}")
         raise HTTPException(status_code=404, detail="Không tìm thấy ý định thanh toán")
 
     intent = payment_intents_db[intent_id]
 
-    # Giả lập gọi đến cổng thanh toán (Stripe, MoMo...) với token an toàn
-    print(f"Đang xử lý thanh toán an toàn cho {request.payment_method_id}...")
+    
+    logger.info(f"Processing payment for Intent: {intent_id} | Amount: {intent['amount']} | Method: {request.payment_method_id}")
 
-    intent["status"] = "succeeded"
-    charge_id = f"ch_v2_{intent_id}"
-
-    return PaymentConfirmResponse(
-        success=True,
-        charge_id=charge_id,
-        message=f"Cảm ơn {current_user.username} đã mua sách '{intent['book_title']}' thành công."
-    )
+    # Giả lập logic Circuit Breaker (đơn giản hóa bằng try-except log)
+    try:
+        # Giả sử đây là code gọi Stripe/MoMo
+        intent["status"] = "succeeded"
+        charge_id = f"ch_v2_{intent_id}"
+        
+        logger.success(f"Payment successful: Charge ID {charge_id}") 
+        
+        return PaymentConfirmResponse(
+            success=True,
+            charge_id=charge_id,
+            message=f"Cảm ơn {current_user.username} đã mua sách '{intent['book_title']}' thành công."
+        )
+    except Exception as e:
+        logger.critical(f"CRITICAL PAYMENT ERROR: {str(e)}") 
+        raise HTTPException(status_code=500, detail="Lỗi cổng thanh toán")
 
 app = FastAPI(title="Book Management API with JWT (HTTPBearer)")
 
@@ -263,13 +289,13 @@ app.include_router(router_v1)
 app.include_router(router_v2) 
 
 @app.post("/token", response_model=Token)
-@limiter.limit("5/minute") # Tối đa 5 request/phút
+@limiter.limit("5/minute") 
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()): 
-    # 1. Ghi log: Ai đang cố đăng nhập?
+    
     logger.info(f"Login attempt | IP: {request.client.host} | Username: {form_data.username}")
     user = authenticate_user(fake_users_db, form_data.username, form_data.password)
     if not user:
-        # 2. Ghi log cảnh báo: Đăng nhập thất bại
+        
         logger.warning(f"Login failed | IP: {request.client.host} | Username: {form_data.username}")
         raise HTTPException(status_code=400, detail="Sai tài khoản hoặc mật khẩu")
 
@@ -279,7 +305,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = create_access_token(data={"sub": user.username}, expires_delta=refresh_token_expires)
 
-    # 3. Ghi log thành công: Đăng nhập OK
+    
     logger.success(f"Login successful | User: {user.username}")
 
     return {"access_token": access_token, "token_type": "bearer", "refresh_token": refresh_token}

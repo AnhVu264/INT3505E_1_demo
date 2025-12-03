@@ -7,3 +7,4 @@ loguru # Thay cho Winston
 slowapi                    
 prometheus-fastapi-instrumentator # Xuất số liệu cho Monitoring
 python-dotenv # Quản lý biến môi trường bảo mật
+httpx

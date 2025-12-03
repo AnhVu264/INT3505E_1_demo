@@ -13,6 +13,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 import sys
 import os
 from dotenv import load_dotenv
+import httpx
+from fastapi import BackgroundTasks 
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key_neu_quen_cau_hinh")
 ALGORITHM = "HS256"
@@ -102,6 +104,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise credentials_exception
     return user
 
+class Link(BaseModel):
+    rel: str
+    href: str
+    method: str
+
 class BookBase(BaseModel):
     title: str
     author: str
@@ -128,6 +135,7 @@ class PaymentIntentResponse(BaseModel):
 
 class PaymentConfirmRequest(BaseModel):
     payment_method_id: str # Token an toàn, ví dụ "pm_abc123"
+    webhook_url: Optional[str] = None # Client đăng ký URL nhận thông báo
 
 class PaymentConfirmResponse(BaseModel):
     success: bool
@@ -213,6 +221,16 @@ def delete_book(id: int, current_user: User = Depends(get_current_user)):
             return
     raise HTTPException(status_code=404, detail="Không tìm thấy sách")
 
+async def send_webhook(url: str, payload: dict):
+    """Hàm này sẽ gửi dữ liệu sang hệ thống bên thứ 3"""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Giả lập timeout 5s
+            resp = await client.post(url, json=payload, timeout=5.0)
+            logger.info(f"Webhook sent to {url} | Status: {resp.status_code}")
+    except Exception as e:
+        logger.error(f"Failed to send webhook: {str(e)}")
+
 router_v2 = APIRouter(prefix="/v2/checkout")
 
 payment_intents_db = {}
@@ -246,15 +264,17 @@ def create_payment_intent(
     )
 
 @router_v2.post("/intents/{intent_id}/confirm", response_model=PaymentConfirmResponse, summary="[V2 - Bước 2] Xác nhận thanh toán")
-def confirm_payment(
+async def confirm_payment(
     intent_id: str,
     request: PaymentConfirmRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
     if intent_id not in payment_intents_db:
         
         logger.error(f"Payment failed: Intent ID {intent_id} not found for user {current_user.username}")
         raise HTTPException(status_code=404, detail="Không tìm thấy ý định thanh toán")
+        pass
 
     intent = payment_intents_db[intent_id]
 
@@ -268,6 +288,20 @@ def confirm_payment(
         charge_id = f"ch_v2_{intent_id}"
         
         logger.success(f"Payment successful: Charge ID {charge_id}") 
+
+        if request.webhook_url:
+            webhook_payload = {
+                "event": "payment.succeeded",
+                "data": {
+                    "intent_id": intent_id,
+                    "amount": intent["amount"],
+                    "charge_id": charge_id,
+                    "timestamp": str(datetime.now())
+                }
+            }
+            # Đẩy việc gửi webhook vào chạy nền
+            background_tasks.add_task(send_webhook, request.webhook_url, webhook_payload)
+            logger.info(f"Webhook queued for {request.webhook_url}")
         
         return PaymentConfirmResponse(
             success=True,

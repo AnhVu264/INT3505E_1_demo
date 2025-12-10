@@ -153,20 +153,25 @@ books_db = [
     {"id": 6, "title": "Nguoi lái đò sông Đà", "author": "Nguyẽn Tuân"},
 ]
 
-@router_v1.get("/books", response_model=List[Book])
+@router_v1.get("/books")
 def get_books(
     q: Optional[str] = Query(None, description="Tìm kiếm theo tiêu đề hoặc tác giả"),
     skip: int = 0,
     limit: int = 10,
+    fields: Optional[str] = Query(None, description="Các trường cần lấy, ngăn cách bằng dấu phẩy. VD: id,title"),
     current_user: User = Depends(get_current_user)
 ):
     filtered_books = books_db
-    if q:
-        q_lower = q.lower()
-        filtered_books = [
-            b for b in books_db if q_lower in b["title"].lower() or q_lower in b["author"].lower()
-        ]
-    return filtered_books[skip: skip + limit]
+    result_books = filtered_books[skip: skip + limit]
+    if fields:
+        field_list = fields.split(",")
+        # Chỉ giữ lại các key có trong field_list
+        dynamic_books = []
+        for book in result_books:
+            filtered_item = {k: v for k, v in book.items() if k in field_list}
+            dynamic_books.append(filtered_item)
+        return dynamic_books
+    return result_books
 
 @router_v1.get("/books/{id}", response_model=Book)
 def get_book(id: int, current_user: User = Depends(get_current_user)):
@@ -190,7 +195,7 @@ def get_book(id: int, current_user: User = Depends(get_current_user)):
             return response_book
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sách")
 
-@router_v1.post("/books", response_model=Book, status_code=status.HTTP_201_CREATED)
+@router_v1.get("/books", response_model=Book, status_code=status.HTTP_201_CREATED)
 def add_book(book_in: BookCreate, current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Chỉ admin được thêm sách")
